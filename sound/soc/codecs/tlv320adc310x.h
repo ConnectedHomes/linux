@@ -383,7 +383,7 @@ struct adc310x_disable_nb {
 
 /* codec private data */
 struct adc310x_priv {
-	struct snd_soc_codec *codec;
+	struct snd_soc_component *component;
 	struct regmap *regmap;
 	struct regulator_bulk_data supplies[ADC310X_NUM_SUPPLIES];
 	struct adc310x_disable_nb disable_nb[ADC310X_NUM_SUPPLIES];

@@ -39,7 +39,7 @@ static const char *adc310x_supply_names[ADC310X_NUM_SUPPLIES] = {
 
 static LIST_HEAD(reset_list);
 
-static int adc310x_init(struct snd_soc_codec *codec);
+static int adc310x_init(struct snd_soc_component *component);
 
 static const struct reg_default adc310x_reg[] = {
 	{ADC310X_PAGE_SELECT, 0x00},
@@ -308,19 +308,19 @@ static const struct snd_kcontrol_new adc310x_snd_controls[] = {
 static int mic_bias_event(struct snd_soc_dapm_widget *w,
 			  struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		/* change mic bias voltage to user defined */
-		snd_soc_update_bits(codec, ADC310X_MIC_BIAS_CTRL,
+		snd_soc_component_update_bits(component, ADC310X_MIC_BIAS_CTRL,
 				    MICBIAS_LEVEL_MASK,
 				    adc310x->micbias_vg << MICBIAS_LEVEL_SHIFT);
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
-		snd_soc_update_bits(codec, MICBIAS_CTRL, MICBIAS_LEVEL_MASK, 0);
+		snd_soc_component_update_bits(component, MICBIAS_CTRL, MICBIAS_LEVEL_MASK, 0);
 		break;
 	}
 	return 0;
@@ -413,17 +413,17 @@ static int adc310x_hw_params(struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *params,
 			     struct snd_soc_dai *dai)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = dai->component;
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 	int fsref;
 	u8 data;
 	int width = adc310x->slot_width;
 
-	/* Re-initialise the codec, handles ESD failures etc/ */
-	adc310x_init(codec);
+	/* Re-initialise the component, handles ESD failures etc/ */
+	adc310x_init(component);
 
 	/* select data word length */
-	data = snd_soc_read(codec, ADC310X_ADC_INTF_CTRL_1) & (~(0x3 << 4));
+	data = snd_soc_component_read(component, ADC310X_ADC_INTF_CTRL_1) & (~(0x3 << 4));
 	switch (width) {
 	case 16:
 		break;
@@ -437,12 +437,12 @@ static int adc310x_hw_params(struct snd_pcm_substream *substream,
 		data |= (0x03 << 4);
 		break;
 	}
-	snd_soc_write(codec, ADC310X_ADC_INTF_CTRL_1, data);
+	snd_soc_component_write(component, ADC310X_ADC_INTF_CTRL_1, data);
 
 	/* Fsref can be 44100 or 48000 */
 	fsref = (params_rate(params) % 11025 == 0) ? 44100 : 48000;
 
-	snd_soc_update_bits(codec, ADC310X_PLL_PR_VAL, PLL_ENABLE, PLL_ENABLE);
+	snd_soc_component_update_bits(component, ADC310X_PLL_PR_VAL, PLL_ENABLE, PLL_ENABLE);
 
 	return 0;
 }
@@ -450,8 +450,8 @@ static int adc310x_hw_params(struct snd_pcm_substream *substream,
 static int adc310x_prepare(struct snd_pcm_substream *substream,
 			   struct snd_soc_dai *dai)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = dai->component;
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 	int width = adc310x->slot_width;
 	int delay = 0;
 
@@ -465,23 +465,23 @@ static int adc310x_prepare(struct snd_pcm_substream *substream,
 		delay += adc310x->tdm_delay * width;
 
 	/* Configure data delay */
-	snd_soc_write(codec, ADC310X_DATA_SLOT_OFF_CH_1, delay);
+	snd_soc_component_write(component, ADC310X_DATA_SLOT_OFF_CH_1, delay);
 
 	return 0;
 }
 
 static int adc310x_mute(struct snd_soc_dai *dai, int mute, int stream)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	u8 mute_reg = snd_soc_read(codec, ADC310X_ADC_VOL_CTRL) &
+	struct snd_soc_component *component = dai->component;
+	u8 mute_reg = snd_soc_component_read(component, ADC310X_ADC_VOL_CTRL) &
 	    ~(ADC310X_LEFT_MUTE | ADC310X_RIGHT_MUTE);
 
 	if (mute) {
-		snd_soc_write(codec, ADC310X_ADC_VOL_CTRL,
+		snd_soc_component_write(component, ADC310X_ADC_VOL_CTRL,
 			      mute_reg | ADC310X_RIGHT_MUTE |
 			      ADC310X_LEFT_MUTE);
 	} else {
-		snd_soc_write(codec, ADC310X_ADC_VOL_CTRL, mute_reg);
+		snd_soc_component_write(component, ADC310X_ADC_VOL_CTRL, mute_reg);
 	}
 
 	return 0;
@@ -490,12 +490,12 @@ static int adc310x_mute(struct snd_soc_dai *dai, int mute, int stream)
 static int adc310x_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 				  int clk_id, unsigned int freq, int dir)
 {
-	struct snd_soc_codec *codec = codec_dai->codec;
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = codec_dai->component;
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 
 	/* set clock on MCLK or BCLK */
-	snd_soc_update_bits(codec, ADC310X_CLK_OUT_MUX, PLLCLK_IN_MASK, clk_id);
-	snd_soc_update_bits(codec, ADC310X_CLK_OUT_MUX, CLKDIV_IN_MASK, clk_id);
+	snd_soc_component_update_bits(component, ADC310X_CLK_OUT_MUX, PLLCLK_IN_MASK, clk_id);
+	snd_soc_component_update_bits(component, ADC310X_CLK_OUT_MUX, CLKDIV_IN_MASK, clk_id);
 
 	adc310x->sysclk = freq;
 	return 0;
@@ -503,11 +503,11 @@ static int adc310x_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 
 static int adc310x_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
 {
-	struct snd_soc_codec *codec = codec_dai->codec;
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = codec_dai->component;
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 	u8 iface_ctrla, iface_ctrlb;
 
-	iface_ctrla = snd_soc_read(codec, ADC310X_ADC_INTF_CTRL_1) & 0x33;
+	iface_ctrla = snd_soc_component_read(component, ADC310X_ADC_INTF_CTRL_1) & 0x33;
 
 	/* set master/slave audio interface */
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
@@ -540,7 +540,7 @@ static int adc310x_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
 		return -EINVAL;
 	}
 
-	iface_ctrlb = snd_soc_read(codec, ADC310X_ADC_INTF_CTRL_2) & 0xf7;
+	iface_ctrlb = snd_soc_component_read(component, ADC310X_ADC_INTF_CTRL_2) & 0xf7;
 	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
 	case SND_SOC_DAIFMT_NB_NF:
 	case SND_SOC_DAIFMT_NB_IF:
@@ -555,8 +555,8 @@ static int adc310x_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
 
 	adc310x->dai_fmt = fmt & SND_SOC_DAIFMT_FORMAT_MASK;
 
-	snd_soc_write(codec, ADC310X_ADC_INTF_CTRL_1, iface_ctrla);
-	snd_soc_write(codec, ADC310X_ADC_INTF_CTRL_2, iface_ctrlb);
+	snd_soc_component_write(component, ADC310X_ADC_INTF_CTRL_1, iface_ctrla);
+	snd_soc_component_write(component, ADC310X_ADC_INTF_CTRL_2, iface_ctrlb);
 
 	return 0;
 }
@@ -565,24 +565,24 @@ static int adc310x_set_dai_tdm_slot(struct snd_soc_dai *codec_dai,
 				    unsigned int tx_mask, unsigned int rx_mask,
 				    int slots, int slot_width)
 {
-	struct snd_soc_codec *codec = codec_dai->codec;
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = codec_dai->component;
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 	unsigned int lsb;
 
 	if (tx_mask != rx_mask) {
-		dev_err(codec->dev, "tx and rx masks must be symmetric\n");
+		dev_err(component->dev, "tx and rx masks must be symmetric\n");
 		return -EINVAL;
 	}
 
 	if (unlikely(!tx_mask)) {
-		dev_err(codec->dev, "tx and rx masks need to be non 0\n");
+		dev_err(component->dev, "tx and rx masks need to be non 0\n");
 		return -EINVAL;
 	}
 
 	/* TDM based on DSP mode requires slots to be adjacent */
 	lsb = __ffs(tx_mask);
 	if ((lsb + 1) != __fls(tx_mask)) {
-		dev_err(codec->dev, "Invalid mask, slots must be adjacent\n");
+		dev_err(component->dev, "Invalid mask, slots must be adjacent\n");
 		return -EINVAL;
 	}
 
@@ -593,7 +593,7 @@ static int adc310x_set_dai_tdm_slot(struct snd_soc_dai *codec_dai,
 	case 32:
 		break;
 	default:
-		dev_err(codec->dev, "Unsupported slot width %d\n", slot_width);
+		dev_err(component->dev, "Unsupported slot width %d\n", slot_width);
 		return -EINVAL;
 	}
 
@@ -601,7 +601,7 @@ static int adc310x_set_dai_tdm_slot(struct snd_soc_dai *codec_dai,
 	adc310x->slot_width = slot_width;
 
 	/* DOUT in high-impedance on inactive bit clocks */
-	snd_soc_update_bits(codec, ADC310X_ADC_INTF_CTRL_1,
+	snd_soc_component_update_bits(component, ADC310X_ADC_INTF_CTRL_1,
 			    DOUT_TRISTATE, DOUT_TRISTATE);
 	return 0;
 }
@@ -627,24 +627,24 @@ static struct snd_soc_dai_driver adc310x_dai = {
 	.symmetric_rates = 1,
 };
 
-static int adc310x_init(struct snd_soc_codec *codec)
+static int adc310x_init(struct snd_soc_component *component)
 {
-	snd_soc_write(codec, ADC310X_RESET, SOFT_RESET);
-	snd_soc_write(codec, ADC310X_PLL_PR_VAL, 0x11);
-	snd_soc_write(codec, ADC310X_PLL_J_VAL, 24);
-	snd_soc_write(codec, ADC310X_PLL_D_VAL_MSB, 0x00);
-	snd_soc_write(codec, ADC310X_PLL_D_VAL_LSB, 0x00);
-	snd_soc_write(codec, ADC310X_NADC_CLK, 0x90);
-	snd_soc_write(codec, ADC310X_MADC_CLK, 0x86);
-	snd_soc_write(codec, ADC310X_AOSR, 0x40);
-	snd_soc_write(codec, ADC310X_BLCK_N_DIV, 0x81);
-	snd_soc_write(codec, ADC310X_ADC_PROC_BLK, 0x01);
-	snd_soc_write(codec, ADC310X_ADC_INTF_CTRL_2, 0x03);
-	snd_soc_write(codec, ADC310X_ADC_VOL_L, 0x00);
-	snd_soc_write(codec, ADC310X_ADC_VOL_R, 0x0);
-	/*snd_soc_write(codec, ADC310X_MIC_BIAS_CTRL, 0x00); */
-	snd_soc_write(codec, ADC310X_DMCLK_GPIO2, 0x28);
-	snd_soc_write(codec, ADC310X_DMDIN_GPIO1, 0x04);
+	snd_soc_component_write(component, ADC310X_RESET, SOFT_RESET);
+	snd_soc_component_write(component, ADC310X_PLL_PR_VAL, 0x11);
+	snd_soc_component_write(component, ADC310X_PLL_J_VAL, 24);
+	snd_soc_component_write(component, ADC310X_PLL_D_VAL_MSB, 0x00);
+	snd_soc_component_write(component, ADC310X_PLL_D_VAL_LSB, 0x00);
+	snd_soc_component_write(component, ADC310X_NADC_CLK, 0x90);
+	snd_soc_component_write(component, ADC310X_MADC_CLK, 0x86);
+	snd_soc_component_write(component, ADC310X_AOSR, 0x40);
+	snd_soc_component_write(component, ADC310X_BLCK_N_DIV, 0x81);
+	snd_soc_component_write(component, ADC310X_ADC_PROC_BLK, 0x01);
+	snd_soc_component_write(component, ADC310X_ADC_INTF_CTRL_2, 0x03);
+	snd_soc_component_write(component, ADC310X_ADC_VOL_L, 0x00);
+	snd_soc_component_write(component, ADC310X_ADC_VOL_R, 0x0);
+	/*snd_soc_component_write(component, ADC310X_MIC_BIAS_CTRL, 0x00); */
+	snd_soc_component_write(component, ADC310X_DMCLK_GPIO2, 0x28);
+	snd_soc_component_write(component, ADC310X_DMDIN_GPIO1, 0x04);
 
 	return 0;
 }
@@ -682,16 +682,16 @@ static int adc310x_regulator_event(struct notifier_block *nb,
 	return 0;
 }
 
-static int adc310x_set_power(struct snd_soc_codec *codec, int power)
+static int adc310x_set_power(struct snd_soc_component *component, int power)
 {
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 	int ret;
 #if 0
 	unsigned int i;
 
 	printk("%s: Enter (%d)\n", __func__, power);
 	for (i = 0; i < ARRAY_SIZE(adc310x_reg); i++) {
-		uint8_t v = snd_soc_read(codec, adc310x_reg[i].reg);
+		uint8_t v = snd_soc_component_read(component, adc310x_reg[i].reg);
 
 		printk("%1u.%03u: %02X / %u\n", adc310x_reg[i].reg >> 7,
 		       adc310x_reg[i].reg % 128, v, v);
@@ -711,7 +711,7 @@ static int adc310x_set_power(struct snd_soc_codec *codec, int power)
 			gpio_set_value(adc310x->gpio_reset, 1);
 		}
 
-		adc310x_init(codec);
+		adc310x_init(component);
 		/* Sync reg_cache with the hardware */
 		regcache_cache_only(adc310x->regmap, false);
 		regcache_sync(adc310x->regmap);
@@ -721,8 +721,8 @@ static int adc310x_set_power(struct snd_soc_codec *codec, int power)
 		 * possible VDD leakage currents in case the supply regulators
 		 * remain on
 		 */
-		snd_soc_write(codec, ADC310X_PAGE_SELECT, PAGE0_SELECT);
-		snd_soc_write(codec, ADC310X_RESET, SOFT_RESET);
+		snd_soc_component_write(component, ADC310X_PAGE_SELECT, PAGE0_SELECT);
+		snd_soc_component_write(component, ADC310X_RESET, SOFT_RESET);
 		regcache_mark_dirty(adc310x->regmap);
 		adc310x->power = 0;
 		/* HW writes are needless when bias is off */
@@ -734,10 +734,10 @@ out:
 	return ret;
 }
 
-static int adc310x_set_bias_level(struct snd_soc_codec *codec,
+static int adc310x_set_bias_level(struct snd_soc_component *component,
 				  enum snd_soc_bias_level level)
 {
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 
 	switch (level) {
 	case SND_SOC_BIAS_ON:
@@ -747,28 +747,28 @@ static int adc310x_set_bias_level(struct snd_soc_codec *codec,
 		break;
 	case SND_SOC_BIAS_STANDBY:
 		if (!adc310x->power)
-			adc310x_set_power(codec, 1);
-		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_PREPARE
+			adc310x_set_power(component, 1);
+		if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_PREPARE
 		    && adc310x->master) {
 			printk("%s: Level is %i\n", __func__, level);
 		}
 		break;
 	case SND_SOC_BIAS_OFF:
 		if (adc310x->power)
-			adc310x_set_power(codec, 0);
+			adc310x_set_power(component, 0);
 		break;
 	}
 
 	return 0;
 }
 
-static int adc310x_probe(struct snd_soc_codec *codec)
+static int adc310x_probe(struct snd_soc_component *component)
 {
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 	int ret, i;
 
 	INIT_LIST_HEAD(&adc310x->list);
-	adc310x->codec = codec;
+	adc310x->component = component;
 
 	for (i = 0; i < ARRAY_SIZE(adc310x->supplies); i++) {
 		adc310x->disable_nb[i].nb.notifier_call =
@@ -777,7 +777,7 @@ static int adc310x_probe(struct snd_soc_codec *codec)
 		ret = regulator_register_notifier(adc310x->supplies[i].consumer,
 						  &adc310x->disable_nb[i].nb);
 		if (ret) {
-			dev_err(codec->dev,
+			dev_err(component->dev,
 				"Failed to request regulator notifier: %d\n",
 				ret);
 			goto err_notif;
@@ -790,7 +790,7 @@ static int adc310x_probe(struct snd_soc_codec *codec)
 	case ADC310X_MICBIAS_2_0V:
 	case ADC310X_MICBIAS_2_5V:
 	case ADC310X_MICBIAS_AVDDV:
-		snd_soc_update_bits(codec, ADC310X_MIC_BIAS_CTRL,
+		snd_soc_component_update_bits(component, ADC310X_MIC_BIAS_CTRL,
 				    MICBIAS1_MASK,
 				    (adc310x->micbias1_vg) << MICBIAS1_SHIFT);
 		break;
@@ -808,7 +808,7 @@ static int adc310x_probe(struct snd_soc_codec *codec)
 	case ADC310X_MICBIAS_2_0V:
 	case ADC310X_MICBIAS_2_5V:
 	case ADC310X_MICBIAS_AVDDV:
-		snd_soc_update_bits(codec, ADC310X_MIC_BIAS_CTRL,
+		snd_soc_component_update_bits(component, ADC310X_MIC_BIAS_CTRL,
 				    MICBIAS2_MASK,
 				    (adc310x->micbias2_vg) << MICBIAS2_SHIFT);
 		break;
@@ -821,7 +821,7 @@ static int adc310x_probe(struct snd_soc_codec *codec)
 		break;
 	}
 
-	adc310x_init(codec);
+	adc310x_init(component);
 
 	return 0;
 
@@ -832,36 +832,32 @@ err_notif:
 	return ret;
 }
 
-static int adc310x_remove(struct snd_soc_codec *codec)
+static void adc310x_remove(struct snd_soc_component *component)
 {
-	struct adc310x_priv *adc310x = snd_soc_codec_get_drvdata(codec);
+	struct adc310x_priv *adc310x = snd_soc_component_get_drvdata(component);
 	int i;
 
 	list_del(&adc310x->list);
 	for (i = 0; i < ARRAY_SIZE(adc310x->supplies); i++)
 		regulator_unregister_notifier(adc310x->supplies[i].consumer,
 					      &adc310x->disable_nb[i].nb);
-
-	return 0;
 }
 
-static struct snd_soc_codec_driver soc_codec_dev_adc310x = {
+static struct snd_soc_component_driver soc_component_dev_adc310x = {
 	.set_bias_level = adc310x_set_bias_level,
-	.idle_bias_off = true,
+	.idle_bias_on = false,
 	.probe = adc310x_probe,
 	.remove = adc310x_remove,
+	.controls = adc310x_snd_controls,
+	.num_controls = ARRAY_SIZE(adc310x_snd_controls),
 
-	.component_driver = {
-			     .controls = adc310x_snd_controls,
-			     .num_controls = ARRAY_SIZE(adc310x_snd_controls),
+	.dapm_widgets = adc310x_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(adc310x_dapm_widgets),
 
-			     .dapm_widgets = adc310x_dapm_widgets,
-			     .num_dapm_widgets =
-			     ARRAY_SIZE(adc310x_dapm_widgets),
-
-			     .dapm_routes = routes,
-			     .num_dapm_routes = ARRAY_SIZE(routes),
-			     }
+	.dapm_routes = routes,
+	.num_dapm_routes = ARRAY_SIZE(routes),
+	.endianness             = 1,
+	.non_legacy_dai_naming  = 1,
 };
 
 static int adc310x_i2c_probe(struct i2c_client *i2c,
@@ -973,8 +969,8 @@ static int adc310x_i2c_probe(struct i2c_client *i2c,
 		goto err_gpio;
 	}
 
-	ret = snd_soc_register_codec(&i2c->dev,
-				     &soc_codec_dev_adc310x, &adc310x_dai, 1);
+	ret = devm_snd_soc_register_component(&i2c->dev,
+				     &soc_component_dev_adc310x, &adc310x_dai, 1);
 
 	if (ret != 0)
 		goto err_gpio;
@@ -995,7 +991,6 @@ static int adc310x_i2c_remove(struct i2c_client *client)
 {
 	struct adc310x_priv *adc310x = i2c_get_clientdata(client);
 
-	snd_soc_unregister_codec(&client->dev);
 	if (gpio_is_valid(adc310x->gpio_reset) &&
 	    !adc310x_is_shared_reset(adc310x)) {
 		gpio_set_value(adc310x->gpio_reset, 0);
