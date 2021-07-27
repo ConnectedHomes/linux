@@ -785,6 +785,15 @@ static int adc310x_probe(struct snd_soc_component *component)
 	}
 
 	regcache_mark_dirty(adc310x->regmap);
+
+	if (gpio_is_valid(adc310x->gpio_reset)) {
+		gpio_set_value(adc310x->gpio_reset, 0);
+		udelay(100);
+		gpio_set_value(adc310x->gpio_reset, 1);
+		udelay(900);
+	}
+
+
 	/* set mic bias voltage */
 	switch (adc310x->micbias1_vg) {
 	case ADC310X_MICBIAS_2_0V:
